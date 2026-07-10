@@ -1,0 +1,8 @@
+.env
+.env.*
+*.key
+*.pem
+*.ppk
+*.secret
+subscription*
+private*
