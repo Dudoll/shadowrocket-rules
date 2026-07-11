@@ -14,6 +14,7 @@ Routing behavior:
 
 - China whitelist and `GEOIP,CN`: direct.
 - ChatGPT/OpenAI: Los Angeles DMIT TLS/Reality nodes only.
+- Advertising and tracking domains: rejected by the remotely maintained `reject.txt` rule set.
 - Other destinations: Tokyo and Los Angeles stable TLS/Reality nodes are tested every 1800 seconds.
 - A 20 ms tolerance avoids switching nodes for insignificant latency changes.
 
