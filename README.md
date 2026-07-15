@@ -23,8 +23,8 @@ The public config selects nodes only by these public names:
 ```text
 VLESS_TCP_TLS_Vision_DMIT_443
 VLESS_REALITY_Vision_DMIT_8443
-VLESS_TCP_TLS_Vision_443_band
-VLESS_REALITY_Vision_8443_band
+VLESS_TCP_TLS_Vision_8443_band
+VLESS_REALITY_Vision_443_band
 ```
 
 The China whitelist is maintained by [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script).
