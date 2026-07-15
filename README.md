@@ -36,9 +36,10 @@ Import the private `rose` node subscription first, then add the appropriate URL 
 https://cf.joelzt.org/rose-band/<TOKEN>  # Band only
 https://cf.joelzt.org/rose-dmit/<TOKEN>  # DMIT only
 https://cf.joelzt.org/rose-all/<TOKEN>   # Both VPSes
+https://cf.joelzt.org/rose-tv/<TOKEN>    # TV: Cloudflare WS 443 only
 ```
 
-The format-specific form is `/rose-{band|dmit|all}/{default|clashMeta|clashMetaProfiles|sing-box|sing-box_profiles}/<TOKEN>`.
+The format-specific form is `/rose-{band|dmit|all|tv}/{default|clashMeta|clashMetaProfiles|sing-box|sing-box_profiles}/<TOKEN>`. The TV set contains only `BAND_CF_WS_443` and `DMIT_CF_WS_443`; it excludes Reality, direct IPv4/IPv6, and non-standard client ports.
 
 ## App routing
 
