@@ -64,10 +64,11 @@ BAND_REALITY_IPv4_443
 ```text
 DMIT_CF_WS_443
 DMIT_TLS_IPv6_443
+DMIT_REALITY_IPv4_443
 DMIT_REALITY_IPv4_8443
 ```
 
-Each VPS group prefers Cloudflare WS, then its verified IPv6 direct path, then its verified IPv4 Reality path. DMIT Reality over IPv6 was tested and rejected; DMIT uses TLS Vision for the IPv6 fallback instead.
+DMIT splits port 443 by address family: IPv4 serves Reality while the stable direct IPv6 address serves TLS Vision. Port 8443 remains as a Reality fallback. DMIT Reality over IPv6 was tested and rejected; DMIT uses TLS Vision for the IPv6 fallback instead.
 
 The Cloudflare WS endpoints hide the corresponding origin. Dedicated Reality/TLS direct hostnames are DNS-only by protocol necessity and reveal their VPS IPv4/IPv6 when queried. No literal origin IP is embedded in the subscription.
 
