@@ -1,30 +1,73 @@
 # Rose Dual-VPS Shadowrocket Config
 
-This orphan branch is an independent Shadowrocket config subscription. It does not change the repository's `main` branch and contains no node or subscription credentials.
+This orphan branch contains public Shadowrocket routing configs only. Node URLs, UUIDs, subscription tokens, and Reality keys remain in the private node subscription.
 
-Config URL:
+## Config URLs
+
+### Universal app-routing config
 
 ```text
 https://raw.githubusercontent.com/Dudoll/shadowrocket-rules/rose-dual-vps/shadowrocket-rose.conf
 ```
 
-Import the private `rose` node subscription first, then add the URL above as a configuration subscription in Shadowrocket.
+Default traffic uses `自动优先`.
 
-Routing behavior:
-
-- China whitelist and `GEOIP,CN`: direct.
-- ChatGPT/OpenAI and all other proxied traffic: Cloudflare WS TLS 443 first, with Band IPv6/IPv4 Reality 443 as ordered fallbacks.
-- Advertising and tracking domains: rejected by the remotely maintained `reject.txt` rule set.
-- TLS Vision, DMIT direct nodes, duplicate aliases, literal-IP nodes, and non-standard proxy ports are intentionally not published.
-
-The public config selects only these three node names:
+### Band-default device config (recommended for iPhone)
 
 ```text
-VLESS_WS_TLS_CF_443
-VLESS_REALITY_Vision_IPv6_443
-VLESS_REALITY_Vision_443
+https://raw.githubusercontent.com/Dudoll/shadowrocket-rules/rose-dual-vps/shadowrocket-band.conf
 ```
 
-The two Reality hostnames are DNS-only by protocol necessity and therefore reveal the Band origin IPv6/IPv4 when queried. Cloudflare WS remains the privacy-preserving default.
+Unmatched traffic defaults to `Band优先`.
 
-The China whitelist is maintained by [blackmatrix7/ios_rule_script](https://github.com/blackmatrix7/ios_rule_script).
+### DMIT-default device config (recommended for iPad and Mac)
+
+```text
+https://raw.githubusercontent.com/Dudoll/shadowrocket-rules/rose-dual-vps/shadowrocket-dmit.conf
+```
+
+Unmatched traffic defaults to `DMIT优先`.
+
+Import the private `rose` node subscription first, then add the appropriate URL above as a configuration subscription in Shadowrocket.
+
+## Device-specific node subscriptions
+
+```text
+https://cf.joelzt.org/rose-band/<TOKEN>  # Band only
+https://cf.joelzt.org/rose-dmit/<TOKEN>  # DMIT only
+https://cf.joelzt.org/rose-all/<TOKEN>   # Both VPSes
+```
+
+The format-specific form is `/rose-{band|dmit|all}/{default|clashMeta|clashMetaProfiles|sing-box|sing-box_profiles}/<TOKEN>`.
+
+## App routing
+
+- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → `DMIT优先`.
+- Telegram, YouTube, and Google → `Band优先`.
+- China whitelist, `GEOIP,CN`, Apple mainland services, LAN, and system traffic → direct.
+- Advertising and tracking domains → rejected.
+- Remaining blocked/non-China traffic → the device config's default `PROXY` policy.
+
+## Published node names
+
+### Band
+
+```text
+BAND_CF_WS_443
+BAND_REALITY_IPv6_443
+BAND_REALITY_IPv4_443
+```
+
+### DMIT
+
+```text
+DMIT_CF_WS_443
+DMIT_TLS_IPv6_443
+DMIT_REALITY_IPv4_8443
+```
+
+Each VPS group prefers Cloudflare WS, then its verified IPv6 direct path, then its verified IPv4 Reality path. DMIT Reality over IPv6 was tested and rejected; DMIT uses TLS Vision for the IPv6 fallback instead.
+
+The Cloudflare WS endpoints hide the corresponding origin. Dedicated Reality/TLS direct hostnames are DNS-only by protocol necessity and reveal their VPS IPv4/IPv6 when queried. No literal origin IP is embedded in the subscription.
+
+The China whitelist is maintained by [Loyalsoldier/surge-rules](https://github.com/Loyalsoldier/surge-rules).
