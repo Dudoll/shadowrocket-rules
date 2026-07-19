@@ -58,7 +58,10 @@ def _read_env(path: Path) -> dict[str, str]:
         if "=" not in line:
             raise RuntimeError("invalid env line")
         key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        key = key.strip()
+        if key in values:
+            raise RuntimeError(f"duplicate env key: {key}")
+        values[key] = value.strip()
     return values
 
 
@@ -98,12 +101,15 @@ def load_reconcile_env(path: Path = DEFAULT_ENV) -> dict[str, str]:
 
 
 def decode_subscription(path: Path) -> list[str]:
-    raw = "".join(path.read_text().split())
+    try:
+        raw = "".join(path.read_text().split())
+    except OSError:
+        raise RuntimeError("unable to read private subscription") from None
     try:
         normalized = raw + "=" * (-len(raw) % 4)
         decoded = base64.b64decode(normalized, validate=True).decode()
     except Exception as exc:
-        raise RuntimeError(f"invalid Base64 subscription: {path.name}") from exc
+        raise RuntimeError("invalid Base64 subscription") from exc
     links = [line.strip() for line in decoded.splitlines() if line.strip()]
     if not links:
         raise RuntimeError("subscription contains no links")
@@ -194,7 +200,7 @@ def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
         {"name": "COMPUTER_DIRECT", "type": "url-test", "proxies": direct, "url": test_url, "interval": 300, "tolerance": 50},
         {"name": "COMPUTER_CDN", "type": "url-test", "proxies": cdn, "url": test_url, "interval": 300, "tolerance": 50},
         {"name": "COMPUTER_AI", "type": "fallback", "proxies": [*dmit, "COMPUTER_DMIT_CF_WS_443"], "url": test_url, "interval": 180},
-        {"name": "COMPUTER_SOCIAL", "type": "fallback", "proxies": [*band, "COMPUTER_CDN"], "url": test_url, "interval": 180},
+        {"name": "COMPUTER_SOCIAL", "type": "fallback", "proxies": [*band, "COMPUTER_BAND_CF_WS_443"], "url": test_url, "interval": 180},
         {"name": "COMPUTER_VIDEO", "type": "fallback", "proxies": ["COMPUTER_DIRECT", "COMPUTER_CDN"], "url": test_url, "interval": 180},
         {"name": "COMPUTER_DEFAULT", "type": "fallback", "proxies": ["COMPUTER_DIRECT", "COMPUTER_CDN"], "url": test_url, "interval": 180},
         {"name": "PROXY", "type": "select", "proxies": ["COMPUTER_DEFAULT", "COMPUTER_AI", "COMPUTER_SOCIAL", "COMPUTER_VIDEO", "COMPUTER_DIRECT", "COMPUTER_CDN", *names, "DIRECT"]},
@@ -267,10 +273,40 @@ def publish_outputs(root: Path, outputs: dict[tuple[str, str, str], str]) -> Non
         ("computer", "clashMetaProfiles"),
         ("tv", "clashMetaProfiles"),
     }
-    for (device, format_name, token), body in outputs.items():
+    current: set[str] = set()
+    for device, format_name, token in outputs:
         if (device, format_name) not in allowed or not TOKEN_RE.fullmatch(token):
             raise RuntimeError("invalid publication path")
-        atomic_write(root / "split" / device / format_name / token, body)
+        current.add(f"split/{device}/{format_name}/{token}")
+
+    # Parse and validate all manifest state before making any public change.
+    manifest = root / ".device-publications.json"
+    previous: set[str] = set()
+    if manifest.exists():
+        try:
+            loaded = json.loads(manifest.read_text())
+        except (OSError, json.JSONDecodeError):
+            raise RuntimeError("invalid device publication manifest") from None
+        if not isinstance(loaded, list) or not all(isinstance(item, str) for item in loaded):
+            raise RuntimeError("invalid device publication manifest")
+        previous = set(loaded)
+    for relative in previous:
+        parts = Path(relative).parts
+        if len(parts) != 4 or parts[0] != "split" or (parts[1], parts[2]) not in allowed or not TOKEN_RE.fullmatch(parts[3]):
+            raise RuntimeError("invalid managed publication path")
+
+    for (device, format_name, token), body in outputs.items():
+        relative = f"split/{device}/{format_name}/{token}"
+        try:
+            atomic_write(root / relative, body)
+        except OSError:
+            raise RuntimeError("unable to publish device subscription") from None
+    for relative in previous - current:
+        try:
+            (root / relative).unlink(missing_ok=True)
+        except OSError:
+            raise RuntimeError("unable to revoke managed device subscription") from None
+    atomic_write(manifest, json.dumps(sorted(current), indent=2) + "\n", mode=0o600)
 
 
 def reconcile_vless_clients(config: dict, identities: dict[str, str], legacy_uuid: str) -> bool:
@@ -327,7 +363,14 @@ def generate_outputs(env: dict[str, str], master_root: Path) -> dict[tuple[str, 
         token = env.get(optional)
         if token and (master_root / "default" / token).exists():
             links.extend(decode_subscription(master_root / "default" / token))
-    clash = yaml.safe_load((master_root / "clashMeta" / master_token).read_text())
+    try:
+        clash_text = (master_root / "clashMeta" / master_token).read_text()
+    except OSError:
+        raise RuntimeError("unable to read private Clash subscription") from None
+    try:
+        clash = yaml.safe_load(clash_text)
+    except yaml.YAMLError:
+        raise RuntimeError("invalid private Clash subscription") from None
     proxies = clash.get("proxies") or []
     if not proxies:
         raise RuntimeError("master Clash provider has no proxies")

@@ -4,6 +4,7 @@ import base64
 import importlib.util
 import json
 from pathlib import Path
+import traceback
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
@@ -69,10 +70,19 @@ def test_mobile_generation_rejects_duplicate_names_and_malformed_base64(tmp_path
     with pytest.raises(RuntimeError, match="duplicate mobile node name"):
         module.build_mobile_subscription([link("DUPLICATE"), link("DUPLICATE", "other.example.com")], MOBILE_UUID)
 
-    malformed = tmp_path / "subscription"
+    secret_token = "secret-bearer-token-123456"
+    malformed = tmp_path / secret_token
     malformed.write_text("not valid base64 !!!")
-    with pytest.raises(RuntimeError, match="invalid Base64 subscription"):
+    with pytest.raises(RuntimeError, match="invalid Base64 subscription") as exc:
         module.decode_subscription(malformed)
+    rendered = "".join(traceback.format_exception(type(exc.value), exc.value, exc.value.__traceback__))
+    assert secret_token not in rendered
+
+    missing = tmp_path / "missing-secret-token-123456"
+    with pytest.raises(RuntimeError, match="unable to read private subscription") as exc:
+        module.decode_subscription(missing)
+    rendered = "".join(traceback.format_exception(type(exc.value), exc.value, exc.value.__traceback__))
+    assert missing.name not in rendered
 
 
 def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
@@ -100,6 +110,11 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
     assert groups["COMPUTER_SOCIAL"]["proxies"][:2] == [
         "COMPUTER_BAND_REALITY_IPv4_443",
         "COMPUTER_BAND_REALITY_IPv6_443",
+    ]
+    assert groups["COMPUTER_SOCIAL"]["proxies"] == [
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_REALITY_IPv6_443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     assert groups["COMPUTER_CDN"]["proxies"] == [
         "COMPUTER_DMIT_CF_WS_443",
@@ -159,6 +174,13 @@ def test_env_requires_distinct_tokens_and_uuids(tmp_path: Path) -> None:
         module.load_device_env(env)
 
 
+def test_env_rejects_duplicate_keys(tmp_path: Path) -> None:
+    env = tmp_path / "duplicate.env"
+    env.write_text("MASTER_TOKEN=master-token-123456\nMASTER_TOKEN=other-master-token-123456\n")
+    with pytest.raises(RuntimeError, match="duplicate env key"):
+        module._read_env(env)
+
+
 @pytest.mark.parametrize("key", ["MASTER_TOKEN", "XHTTP_TOKEN", "BAND_XHTTP_TOKEN"])
 def test_env_rejects_unsafe_master_path_tokens(tmp_path: Path, key: str) -> None:
     values = {
@@ -197,6 +219,47 @@ def test_atomic_publish_writes_expected_paths_and_permissions(tmp_path: Path) ->
 
     with pytest.raises(RuntimeError, match="invalid publication path"):
         module.publish_outputs(tmp_path, {("mobile", "clashMetaProfiles", "mobile-token-123456"): "bad"})
+
+
+def test_token_rotation_removes_only_previous_managed_publications(tmp_path: Path) -> None:
+    first = {
+        ("mobile", "default", "mobile-token-old-123456"): "old-mobile\n",
+        ("computer", "clashMetaProfiles", "computer-token-old-123456"): "old-computer\n",
+        ("tv", "clashMetaProfiles", "tv-token-old-123456"): "old-tv\n",
+    }
+    unrelated = tmp_path / "split" / "tv" / "clashMetaProfiles" / "legacy-unmanaged-token"
+    unrelated.parent.mkdir(parents=True)
+    unrelated.write_text("legacy\n")
+    module.publish_outputs(tmp_path, first)
+
+    second = {
+        ("mobile", "default", "mobile-token-new-123456"): "new-mobile\n",
+        ("computer", "clashMetaProfiles", "computer-token-new-123456"): "new-computer\n",
+        ("tv", "clashMetaProfiles", "tv-token-new-123456"): "new-tv\n",
+    }
+    module.publish_outputs(tmp_path, second)
+
+    for device, format_name, token in first:
+        assert not (tmp_path / "split" / device / format_name / token).exists()
+    for device, format_name, token in second:
+        assert (tmp_path / "split" / device / format_name / token).exists()
+    assert unrelated.exists()
+    manifest = tmp_path / ".device-publications.json"
+    assert manifest.stat().st_mode & 0o777 == 0o600
+
+
+def test_malformed_manifest_fails_before_any_publication_change(tmp_path: Path) -> None:
+    existing = tmp_path / "split" / "mobile" / "default" / "existing-token-123456"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("existing\n")
+    (tmp_path / ".device-publications.json").write_text("not-json")
+    new_path = tmp_path / "split" / "mobile" / "default" / "new-token-123456789"
+
+    with pytest.raises(RuntimeError, match="invalid device publication manifest"):
+        module.publish_outputs(tmp_path, {("mobile", "default", new_path.name): "new\n"})
+
+    assert existing.read_text() == "existing\n"
+    assert not new_path.exists()
 
 
 def test_reconcile_env_requires_only_distinct_device_uuids(tmp_path: Path) -> None:
@@ -288,8 +351,21 @@ def test_systemd_timer_contract_and_transactional_reconcile_script() -> None:
     assert script.stat().st_mode & 0o111
     assert "CANDIDATE=" in text
     assert "BACKUP=" in text
+    assert "flock -n 9" in text
+    assert "/run/lock/rose-device-clients.lock" in text
+    assert "RESTORE=" in text
+    assert 'cp -p "$BACKUP" "$RESTORE"' in text
+    assert 'mv "$RESTORE" "$CONFIG"' in text
+    dmit_service = (root / "systemd" / "rose-device-clients-dmit.service").read_text()
+    band_service = (root / "systemd" / "rose-device-clients-band.service").read_text()
+    assert "/run/lock" in dmit_service
+    assert "/run/lock" in band_service
+    manager_lock = (root / "systemd" / "reality-camouflage-health.service.d" / "20-device-client-lock.conf").read_text()
+    assert "ExecStart=" in manager_lock
+    assert "/usr/bin/flock -n /run/lock/rose-device-clients.lock" in manager_lock
+    assert "LIVE_SHA=" in text
+    assert "current_sha" in text
     assert text.index("xray run -test") < text.index('mv "$CANDIDATE" "$CONFIG"')
-    assert 'mv "$BACKUP" "$CONFIG"' in text
     assert 'if ! "$GENERATOR" reconcile --env "$ENV_FILE" --config "$CONFIG"' in text
     assert "rollback" in text
     assert (root / "scripts" / "rose_device_subscriptions.py").stat().st_mode & 0o111

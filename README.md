@@ -57,7 +57,9 @@ The legacy format-specific form is `/rose-{band|dmit|all|tv}/{default|clashMeta|
 
 Install `scripts/rose_device_subscriptions.py` as `/usr/local/sbin/rose-generate-device-subscriptions` and `scripts/rose-reconcile-device-clients.sh` as `/usr/local/sbin/rose-reconcile-device-clients`, both mode `0755`. On DMIT install/enable `rose-device-clients-dmit.{service,timer}`; on Band install/enable `rose-device-clients-band.{service,timer}`. The root-only identity env is mode `0600` and contains `LEGACY_UUID`, `MOBILE_UUID`, `COMPUTER_UUID`, and `TV_UUID`; the legacy UUID is required in every VLESS inbound and is never removed by reconciliation.
 
-Reconciliation is transactional: it mutates an isolated candidate, validates a complete temporary Xray confdir, then atomically installs and restarts. Restart or health-check failure restores the prior live config. The timers are host-specific and name their service explicitly.
+Reconciliation is transactional: it mutates an isolated candidate, validates a complete temporary Xray confdir, then atomically installs and restarts. All managed writers—including the Reality camouflage manager—share `/run/lock/rose-device-clients.lock`; live SHA checks additionally abort on uncoordinated changes. Restart, health-check, or configuration readback failure atomically restores the prior live config; if rollback service recovery fails, the untouched backup remains for manual recovery. The timers are host-specific and name their service explicitly.
+
+Device publication maintains a root-only `0600` manifest of files created by this generator. On token rotation, only previously managed token files are removed; unrelated legacy artifacts are preserved. Subscription/token filenames are never included in generator errors or logs.
 
 ## App routing
 
