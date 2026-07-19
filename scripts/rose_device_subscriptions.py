@@ -186,23 +186,63 @@ def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
     missing = sorted(required - set(names))
     if missing:
         raise RuntimeError(f"computer nodes missing from master: {missing}")
-    dmit = [
+    direct = [
         "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_TLS_IPv6_443",
+        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+    ]
+    cdn = ["COMPUTER_BAND_CF_WS_443", "COMPUTER_DMIT_CF_WS_443"]
+    ai = [
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
+    ]
+    social = [
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_CF_WS_443",
+    ]
+    video = [
+        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_REALITY_IPv4_8443",
     ]
-    band = ["COMPUTER_BAND_REALITY_IPv4_443", "COMPUTER_BAND_REALITY_IPv6_443"]
-    direct = [*dmit, *band]
-    cdn = ["COMPUTER_DMIT_CF_WS_443", "COMPUTER_BAND_CF_WS_443"]
+    default = [
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_DMIT_CF_WS_443",
+    ]
     test_url = "https://www.gstatic.com/generate_204"
+
+    def health_group(name: str, group_type: str, members: list[str], tolerance: int | None = None) -> dict:
+        group = {
+            "name": name,
+            "type": group_type,
+            "proxies": members,
+            "url": test_url,
+            "interval": 120,
+            "lazy": False,
+            "max-failed-times": 2,
+        }
+        if tolerance is not None:
+            group["tolerance"] = tolerance
+        return group
+
     profile = _base_clash_profile(rewritten)
     profile["proxy-groups"] = [
-        {"name": "COMPUTER_DIRECT", "type": "url-test", "proxies": direct, "url": test_url, "interval": 300, "tolerance": 50},
-        {"name": "COMPUTER_CDN", "type": "url-test", "proxies": cdn, "url": test_url, "interval": 300, "tolerance": 50},
-        {"name": "COMPUTER_AI", "type": "fallback", "proxies": [*dmit, "COMPUTER_DMIT_CF_WS_443"], "url": test_url, "interval": 180},
-        {"name": "COMPUTER_SOCIAL", "type": "fallback", "proxies": [*band, "COMPUTER_BAND_CF_WS_443"], "url": test_url, "interval": 180},
-        {"name": "COMPUTER_VIDEO", "type": "fallback", "proxies": ["COMPUTER_DIRECT", "COMPUTER_CDN"], "url": test_url, "interval": 180},
-        {"name": "COMPUTER_DEFAULT", "type": "fallback", "proxies": ["COMPUTER_DIRECT", "COMPUTER_CDN"], "url": test_url, "interval": 180},
+        health_group("COMPUTER_DIRECT", "url-test", direct, tolerance=50),
+        health_group("COMPUTER_CDN", "url-test", cdn, tolerance=50),
+        health_group("COMPUTER_AI", "fallback", ai),
+        health_group("COMPUTER_SOCIAL", "fallback", social),
+        health_group("COMPUTER_VIDEO", "fallback", video),
+        health_group("COMPUTER_DEFAULT", "fallback", default),
         {"name": "PROXY", "type": "select", "proxies": ["COMPUTER_DEFAULT", "COMPUTER_AI", "COMPUTER_SOCIAL", "COMPUTER_VIDEO", "COMPUTER_DIRECT", "COMPUTER_CDN", *names, "DIRECT"]},
     ]
     ai_domains = ("chatgpt.com", "chat.com", "openai.com", "sora.com", "oaistatic.com", "oaiusercontent.com", "anthropic.com", "claude.ai", "perplexity.ai", "grok.com", "x.ai")

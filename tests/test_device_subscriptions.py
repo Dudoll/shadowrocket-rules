@@ -102,24 +102,55 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
     assert [p["name"] for p in profile["proxies"]] == [f"COMPUTER_{name}" for name in names]
     assert {p["uuid"] for p in profile["proxies"]} == {COMPUTER_UUID}
     groups = {group["name"]: group for group in profile["proxy-groups"]}
-    assert groups["COMPUTER_AI"]["proxies"][:3] == [
+    assert groups["COMPUTER_DIRECT"]["proxies"] == [
         "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_TLS_IPv6_443",
         "COMPUTER_DMIT_REALITY_IPv4_8443",
-    ]
-    assert groups["COMPUTER_SOCIAL"]["proxies"][:2] == [
         "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_BAND_REALITY_IPv6_443",
+    ]
+    assert groups["COMPUTER_CDN"]["proxies"] == [
+        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_CF_WS_443",
+    ]
+    assert groups["COMPUTER_AI"]["proxies"] == [
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     assert groups["COMPUTER_SOCIAL"]["proxies"] == [
         "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_BAND_REALITY_IPv6_443",
         "COMPUTER_BAND_CF_WS_443",
-    ]
-    assert groups["COMPUTER_CDN"]["proxies"] == [
+        "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_CF_WS_443",
-        "COMPUTER_BAND_CF_WS_443",
     ]
+    assert groups["COMPUTER_VIDEO"]["proxies"] == [
+        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_8443",
+    ]
+    assert groups["COMPUTER_DEFAULT"]["proxies"] == [
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_DMIT_CF_WS_443",
+    ]
+    health_groups = [group for group in profile["proxy-groups"] if group["type"] != "select"]
+    health_group_names = {group["name"] for group in health_groups}
+    for group in health_groups:
+        assert group["url"] == "https://www.gstatic.com/generate_204"
+        assert group["interval"] == 120
+        assert group["lazy"] is False
+        assert group["max-failed-times"] == 2
+        assert not any("IPv6" in member for member in group["proxies"])
+        assert not health_group_names.intersection(group["proxies"])
+    for group_name in ("COMPUTER_AI", "COMPUTER_SOCIAL", "COMPUTER_VIDEO", "COMPUTER_DEFAULT"):
+        members = groups[group_name]["proxies"]
+        assert any("COMPUTER_DMIT_" in member for member in members)
+        assert any("COMPUTER_BAND_" in member for member in members)
     assert "DOMAIN-SUFFIX,openai.com,COMPUTER_AI" in profile["rules"]
     assert "DOMAIN-SUFFIX,x.com,COMPUTER_SOCIAL" in profile["rules"]
     assert "DOMAIN-SUFFIX,youtube.com,COMPUTER_VIDEO" in profile["rules"]
@@ -384,6 +415,7 @@ def test_systemd_timer_contract_and_transactional_reconcile_script() -> None:
     manager_lock = (root / "systemd" / "reality-camouflage-health.service.d" / "20-device-client-lock.conf").read_text()
     assert "ExecStart=" in manager_lock
     assert "/usr/bin/flock -n /run/lock/rose-device-clients.lock" in manager_lock
+    assert "--force-id cloudflare" in manager_lock
     assert "LIVE_SHA=" in text
     assert "current_sha" in text
     assert text.index("xray run -test") < text.index('mv "$CANDIDATE" "$CONFIG"')

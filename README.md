@@ -57,14 +57,16 @@ The legacy format-specific form is `/rose-{band|dmit|all|tv}/{default|clashMeta|
 
 Install `scripts/rose_device_subscriptions.py` as `/usr/local/sbin/rose-generate-device-subscriptions` and `scripts/rose-reconcile-device-clients.sh` as `/usr/local/sbin/rose-reconcile-device-clients`, both mode `0755`. On DMIT install/enable `rose-device-clients-dmit.{service,timer}`; on Band install/enable `rose-device-clients-band.{service,timer}`. The root-only identity env is mode `0600` and contains `LEGACY_UUID`, `MOBILE_UUID`, `COMPUTER_UUID`, and `TV_UUID`; the legacy UUID is required in every VLESS inbound and is never removed by reconciliation.
 
-Reconciliation is transactional: it mutates an isolated candidate, validates a complete temporary Xray confdir, then atomically installs and restarts. All managed writers—including the Reality camouflage manager—share `/run/lock/rose-device-clients.lock`; live SHA checks additionally abort on uncoordinated changes. Restart, health-check, or configuration readback failure atomically restores the prior live config; if rollback service recovery fails, the untouched backup remains for manual recovery. The timers are host-specific and name their service explicitly.
+Reconciliation is transactional: it mutates an isolated candidate, validates a complete temporary Xray confdir, then atomically installs and restarts. All managed writers—including the Reality camouflage manager—share `/run/lock/rose-device-clients.lock`; live SHA checks additionally abort on uncoordinated changes. The Reality manager is intentionally pinned with `--force-id cloudflare`: a transient DMIT resolver failure must fail closed on the current SNI instead of rotating SNI, restarting Xray, and leaving client health caches stale. Any future SNI rotation is a manual protocol-verified migration followed by subscription regeneration. Restart, health-check, or configuration readback failure atomically restores the prior live config; if rollback service recovery fails, the untouched backup remains for manual recovery. The timers are host-specific and name their service explicitly.
 
 Device publication maintains a root-only `0600` manifest of files created by this generator. On token rotation, only previously managed token files are removed; unrelated legacy artifacts are preserved. Subscription/token filenames are never included in generator errors or logs.
 
 ## App routing
 
-- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → `DMIT优先`.
-- Telegram, YouTube, and Google → `Band优先`.
+- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → DMIT IPv4/CF first, then Band IPv4/CF fallback.
+- Telegram, X/Instagram, and related social traffic → Band IPv4/CF first, then DMIT IPv4/CF fallback.
+- YouTube/video → Band CDN first, then DMIT CDN and cross-VPS IPv4 Reality fallback.
+- Automatic computer groups are flat (no nested health groups), explicitly non-lazy, and exclude IPv6-only nodes; IPv6 nodes remain available for manual selection.
 - China whitelist, `GEOIP,CN`, Apple mainland services, LAN, and system traffic → direct.
 - Advertising and tracking domains → rejected.
 - Remaining blocked/non-China traffic → the device config's default `PROXY` policy.
