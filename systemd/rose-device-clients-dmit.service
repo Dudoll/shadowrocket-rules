@@ -1,0 +1,14 @@
+[Unit]
+Description=Reconcile device-specific VLESS clients after managed Xray rewrites
+After=xray.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/rose-reconcile-device-clients /etc/v2ray-agent/xray/conf/00-rose-dmit.json
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/v2ray-agent/xray/conf /var/log/xray

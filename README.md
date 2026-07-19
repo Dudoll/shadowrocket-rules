@@ -32,14 +32,32 @@ Import the private `rose` node subscription first, then add the appropriate URL 
 
 ## Device-specific node subscriptions
 
+### Device-distinct primary links
+
+Each device class uses a different private token, client identity, URL path, and node-name prefix. Tokens and UUIDs are generated on the server and never stored in Git.
+
+```text
+https://cf.joelzt.org/rose-mobile/default/<MOBILE_TOKEN>                  # Phone / tablet, Base64 VLESS
+https://cf.joelzt.org/rose-computer/clashMetaProfiles/<COMPUTER_TOKEN>    # Computer, full Clash Meta profile
+https://cf.joelzt.org/rose-tv/clashMetaProfiles/<TV_TOKEN>                # TV, self-contained CDN-first profile
+```
+
+Expected node prefixes are `MOBILE_`, `COMPUTER_`, and `TV_`. The legacy products below remain available during migration:
+
 ```text
 https://cf.joelzt.org/rose-band/<TOKEN>  # Band only
 https://cf.joelzt.org/rose-dmit/<TOKEN>  # DMIT only
 https://cf.joelzt.org/rose-all/<TOKEN>   # Both VPSes
-https://cf.joelzt.org/rose-tv/<TOKEN>    # TV: Cloudflare WS 443 only
+https://cf.joelzt.org/rose-tv/<TOKEN>    # Legacy TV root
 ```
 
-The format-specific form is `/rose-{band|dmit|all|tv}/{default|clashMeta|clashMetaProfiles|sing-box|sing-box_profiles}/<TOKEN>`. The TV set contains only `BAND_CF_WS_443` and `DMIT_CF_WS_443`; it excludes Reality, direct IPv4/IPv6, and non-standard client ports.
+The legacy format-specific form is `/rose-{band|dmit|all|tv}/{default|clashMeta|clashMetaProfiles|sing-box|sing-box_profiles}/<TOKEN>`. Device identities are appended to every VLESS inbound while the legacy identity is preserved for rollback.
+
+### Durable installation contract
+
+Install `scripts/rose_device_subscriptions.py` as `/usr/local/sbin/rose-generate-device-subscriptions` and `scripts/rose-reconcile-device-clients.sh` as `/usr/local/sbin/rose-reconcile-device-clients`, both mode `0755`. On DMIT install/enable `rose-device-clients-dmit.{service,timer}`; on Band install/enable `rose-device-clients-band.{service,timer}`. The root-only identity env is mode `0600` and contains `LEGACY_UUID`, `MOBILE_UUID`, `COMPUTER_UUID`, and `TV_UUID`; the legacy UUID is required in every VLESS inbound and is never removed by reconciliation.
+
+Reconciliation is transactional: it mutates an isolated candidate, validates a complete temporary Xray confdir, then atomically installs and restarts. Restart or health-check failure restores the prior live config. The timers are host-specific and name their service explicitly.
 
 ## App routing
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically preserve Band device-specific VLESS clients
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+Persistent=true
+Unit=rose-device-clients-band.service
+
+[Install]
+WantedBy=timers.target
