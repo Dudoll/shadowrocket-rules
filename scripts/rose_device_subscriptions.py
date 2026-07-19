@@ -298,6 +298,11 @@ def publish_outputs(root: Path, outputs: dict[tuple[str, str, str], str]) -> Non
     for (device, format_name, token), body in outputs.items():
         relative = f"split/{device}/{format_name}/{token}"
         try:
+            directory = root
+            for part in Path(relative).parent.parts:
+                directory = directory / part
+                directory.mkdir(exist_ok=True)
+                os.chmod(directory, 0o755)
             atomic_write(root / relative, body)
         except OSError:
             raise RuntimeError("unable to publish device subscription") from None

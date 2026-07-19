@@ -42,7 +42,7 @@ https://cf.joelzt.org/rose-computer/clashMetaProfiles/<COMPUTER_TOKEN>    # Comp
 https://cf.joelzt.org/rose-tv/clashMetaProfiles/<TV_TOKEN>                # TV, self-contained CDN-first profile
 ```
 
-Expected node prefixes are `MOBILE_`, `COMPUTER_`, and `TV_`. The legacy products below remain available during migration:
+Expected node prefixes are `MOBILE_`, `COMPUTER_`, and `TV_`. HTTP profile titles are `Rose Mobile`, `Rose Computer`, and `Rose TV`; download filenames are unquoted ASCII (`rose-mobile.txt`, `rose-computer.yaml`, `rose-tv.yaml`) to avoid Clash Verge retaining escaped quote characters. The legacy products below remain available during migration:
 
 ```text
 https://cf.joelzt.org/rose-band/<TOKEN>  # Band only

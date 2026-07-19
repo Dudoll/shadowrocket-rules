@@ -215,7 +215,16 @@ def test_atomic_publish_writes_expected_paths_and_permissions(tmp_path: Path) ->
         path = tmp_path / "split" / parts[0] / parts[1] / parts[2]
         assert path.read_text() == body
         assert path.stat().st_mode & 0o777 == 0o644
-        assert path.parent.stat().st_mode & 0o777 == 0o755
+    for directory in (
+        tmp_path / "split",
+        tmp_path / "split" / "mobile",
+        tmp_path / "split" / "mobile" / "default",
+        tmp_path / "split" / "computer",
+        tmp_path / "split" / "computer" / "clashMetaProfiles",
+        tmp_path / "split" / "tv",
+        tmp_path / "split" / "tv" / "clashMetaProfiles",
+    ):
+        assert directory.stat().st_mode & 0o777 == 0o755
 
     with pytest.raises(RuntimeError, match="invalid publication path"):
         module.publish_outputs(tmp_path, {("mobile", "clashMetaProfiles", "mobile-token-123456"): "bad"})
@@ -330,13 +339,25 @@ def test_reconcile_fails_closed_without_vless_or_legacy_and_on_duplicates() -> N
 
 
 def test_nginx_contract_exposes_only_explicit_device_formats() -> None:
-    text = (Path(__file__).parents[1] / "nginx" / "rose-device-subscriptions.conf.inc").read_text()
+    snippet = (Path(__file__).resolve().parents[1] / "nginx" / "rose-device-subscriptions.conf.inc").read_text()
+    assert "/rose-mobile/default/" in snippet
+    assert "/rose-computer/clashMetaProfiles/" in snippet
+    assert "/rose-tv/clashMetaProfiles/" in snippet
+    assert "[A-Za-z0-9_-]{16,128}" in snippet
+    assert "rose-(mobile|computer|tv)/(.*)" not in snippet
+    expected = {
+        "Rose Mobile": "Um9zZSBNb2JpbGU=",
+        "Rose Computer": "Um9zZSBDb21wdXRlcg==",
+        "Rose TV": "Um9zZSBUVg==",
+    }
+    for title, encoded in expected.items():
+        assert f'profile-title "base64:{encoded}"' in snippet
+    for filename in ("rose-mobile.txt", "rose-computer.yaml", "rose-tv.yaml"):
+        assert f"filename={filename}" in snippet
+        assert f'filename=\\"{filename}\\"' not in snippet
+        assert f'filename="{filename}"' not in snippet
 
-    assert "/rose-mobile/default/" in text
-    assert "/rose-computer/clashMetaProfiles/" in text
-    assert "/rose-tv/clashMetaProfiles/" in text
-    assert "[A-Za-z0-9_-]{16,128}" in text
-    assert "rose-(mobile|computer|tv)/(.*)" not in text
+
 
 
 def test_systemd_timer_contract_and_transactional_reconcile_script() -> None:
