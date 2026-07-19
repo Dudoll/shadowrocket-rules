@@ -115,9 +115,8 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
         "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_REALITY_IPv4_8443",
         "COMPUTER_DMIT_CF_WS_443",
-        "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_BAND_CF_WS_443",
     ]
+    assert not any("COMPUTER_BAND_" in member for member in groups["COMPUTER_AI"]["proxies"])
     assert groups["COMPUTER_SOCIAL"]["proxies"] == [
         "COMPUTER_BAND_REALITY_IPv4_443",
         "COMPUTER_BAND_CF_WS_443",
@@ -147,11 +146,12 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
         assert group["max-failed-times"] == 2
         assert not any("IPv6" in member for member in group["proxies"])
         assert not health_group_names.intersection(group["proxies"])
-    for group_name in ("COMPUTER_AI", "COMPUTER_SOCIAL", "COMPUTER_VIDEO", "COMPUTER_DEFAULT"):
+    for group_name in ("COMPUTER_SOCIAL", "COMPUTER_VIDEO", "COMPUTER_DEFAULT"):
         members = groups[group_name]["proxies"]
         assert any("COMPUTER_DMIT_" in member for member in members)
         assert any("COMPUTER_BAND_" in member for member in members)
     assert "DOMAIN-SUFFIX,openai.com,COMPUTER_AI" in profile["rules"]
+    assert "DOMAIN-SUFFIX,plasma.to,COMPUTER_AI" in profile["rules"]
     assert "DOMAIN-SUFFIX,x.com,COMPUTER_SOCIAL" in profile["rules"]
     assert "DOMAIN-SUFFIX,youtube.com,COMPUTER_VIDEO" in profile["rules"]
     assert profile["rules"][-1] == "MATCH,PROXY"

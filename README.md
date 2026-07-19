@@ -63,7 +63,7 @@ Device publication maintains a root-only `0600` manifest of files created by thi
 
 ## App routing
 
-- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → DMIT IPv4/CF first, then Band IPv4/CF fallback.
+- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → DMIT only: Reality IPv4 443/8443, then DMIT CF WS. AI never falls back to Band.
 - Telegram, X/Instagram, and related social traffic → Band IPv4/CF first, then DMIT IPv4/CF fallback.
 - YouTube/video → Band CDN first, then DMIT CDN and cross-VPS IPv4 Reality fallback.
 - Automatic computer groups are flat (no nested health groups), explicitly non-lazy, and exclude IPv6-only nodes; IPv6 nodes remain available for manual selection.

@@ -196,8 +196,6 @@ def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
         "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_REALITY_IPv4_8443",
         "COMPUTER_DMIT_CF_WS_443",
-        "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_BAND_CF_WS_443",
     ]
     social = [
         "COMPUTER_BAND_REALITY_IPv4_443",
@@ -245,7 +243,7 @@ def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
         health_group("COMPUTER_DEFAULT", "fallback", default),
         {"name": "PROXY", "type": "select", "proxies": ["COMPUTER_DEFAULT", "COMPUTER_AI", "COMPUTER_SOCIAL", "COMPUTER_VIDEO", "COMPUTER_DIRECT", "COMPUTER_CDN", *names, "DIRECT"]},
     ]
-    ai_domains = ("chatgpt.com", "chat.com", "openai.com", "sora.com", "oaistatic.com", "oaiusercontent.com", "anthropic.com", "claude.ai", "perplexity.ai", "grok.com", "x.ai")
+    ai_domains = ("chatgpt.com", "chat.com", "openai.com", "sora.com", "oaistatic.com", "oaiusercontent.com", "anthropic.com", "claude.ai", "perplexity.ai", "grok.com", "x.ai", "plasma.to")
     social_domains = ("x.com", "twitter.com", "t.co", "twimg.com", "instagram.com", "cdninstagram.com", "threads.net", "telegram.org", "telegram.me", "t.me", "telesco.pe")
     video_domains = ("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "gvt1.com", "gvt2.com")
     profile["rules"] = [
