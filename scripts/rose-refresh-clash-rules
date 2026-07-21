@@ -2,44 +2,30 @@
 set -Eeuo pipefail
 
 DEST=/var/www/rose-rules/clash-rules
-LOYAL_FILES=(icloud private apple cncidr proxy direct reject)
-LOYAL_BASE=https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release
-MIHOMO_FILES=(apns apple-intelligence apple cdn crypto direct microsoft proxy speedtest telegram)
-MIHOMO_BASE=https://raw.githubusercontent.com/HenryChiao/MIHOMO_YAMLS/main/custom
+FILES=(icloud private apple cncidr proxy direct reject)
+BASE=https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release
 TMP=$(/usr/bin/mktemp -d)
 trap '/usr/bin/rm -rf "$TMP"' EXIT
 
-/usr/bin/mkdir -p "$TMP/loyal" "$TMP/mihomo"
-
-for name in "${LOYAL_FILES[@]}"; do
+for name in "${FILES[@]}"; do
   /usr/bin/curl -fsSL --retry 4 --retry-all-errors --connect-timeout 10 --max-time 120 \
-    "$LOYAL_BASE/$name.txt" -o "$TMP/loyal/$name.txt"
-  /usr/bin/grep -q '^payload:' "$TMP/loyal/$name.txt"
-  test "$(/usr/bin/stat -c %s "$TMP/loyal/$name.txt")" -gt 100
+    "$BASE/$name.txt" -o "$TMP/$name.txt"
+  /usr/bin/grep -q '^payload:' "$TMP/$name.txt"
+  test "$(/usr/bin/stat -c %s "$TMP/$name.txt")" -gt 100
+  /usr/bin/chmod 0644 "$TMP/$name.txt"
 done
 
-for name in "${MIHOMO_FILES[@]}"; do
-  /usr/bin/curl -fsSL --retry 4 --retry-all-errors --connect-timeout 10 --max-time 120 \
-    "$MIHOMO_BASE/$name.list" -o "$TMP/mihomo/$name.list"
-  /usr/bin/grep -Eq '^(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD|IP-CIDR|IP-CIDR6),' "$TMP/mihomo/$name.list"
-done
-
-# Downloads and validation finish before any live file changes.
-/usr/bin/install -d -o root -g root -m 0755 "$DEST" "$DEST/mihomo-custom"
-for name in "${LOYAL_FILES[@]}"; do
-  /usr/bin/install -o root -g root -m 0644 "$TMP/loyal/$name.txt" "$DEST/$name.txt.new"
-done
-for name in "${MIHOMO_FILES[@]}"; do
-  /usr/bin/install -o root -g root -m 0644 "$TMP/mihomo/$name.list" "$DEST/mihomo-custom/$name.list.new"
-done
-for name in "${LOYAL_FILES[@]}"; do
+/usr/bin/install -d -o root -g root -m 0755 "$DEST"
+for name in "${FILES[@]}"; do
+  /usr/bin/install -o root -g root -m 0644 "$TMP/$name.txt" "$DEST/$name.txt.new"
   /usr/bin/mv -f "$DEST/$name.txt.new" "$DEST/$name.txt"
 done
-for name in "${MIHOMO_FILES[@]}"; do
-  /usr/bin/mv -f "$DEST/mihomo-custom/$name.list.new" "$DEST/mihomo-custom/$name.list"
-done
 
-# Embed the refreshed custom lists in Rose Computer, then mirror both the
-# generated subscription and source cache to Band.
-/usr/local/sbin/rose-generate-device-subscriptions generate
+# The MIHOMO custom lists and AWAvenue Ads Rules are now consumed as remote
+# rule-providers directly in the Rose Computer subscription; the local cache
+# is no longer required for generation.
+
+# Mirror to Band and regenerate device subscriptions (MIHOMO + AWAvenue
+# rule-providers fetch from upstream URLs at client runtime).
 /usr/bin/systemctl start rose-subscription-sync.service
+/usr/bin/systemctl start rose-tailored-subscriptions.service
