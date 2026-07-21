@@ -25,7 +25,21 @@ except ModuleNotFoundError:  # Reconciliation on a minimal Xray host does not ne
 DEFAULT_ENV = Path("/etc/rose-tailored-subscriptions.env")
 DEFAULT_MASTER_ROOT = Path("/etc/v2ray-agent/subscribe")
 DEFAULT_PUBLISH_ROOT = Path("/var/www/rose-rules")
+DEFAULT_MIHOMO_RULES_ROOT = Path("/var/www/rose-rules/clash-rules/mihomo-custom")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+MIHOMO_RULE_POLICIES = (
+    ("apple-intelligence.list", "COMPUTER_AI"),
+    ("telegram.list", "COMPUTER_SOCIAL"),
+    ("crypto.list", "COMPUTER_DEFAULT"),
+    ("proxy.list", "COMPUTER_DEFAULT"),
+    ("cdn.list", "COMPUTER_DEFAULT"),
+    ("speedtest.list", "COMPUTER_DEFAULT"),
+    ("apns.list", "DIRECT"),
+    ("apple.list", "DIRECT"),
+    ("microsoft.list", "DIRECT"),
+    ("direct.list", "DIRECT"),
+)
+SUPPORTED_MIHOMO_RULE_TYPES = {"DOMAIN", "DOMAIN-SUFFIX", "DOMAIN-KEYWORD", "IP-CIDR", "IP-CIDR6"}
 DEVICE_KEYS = {
     "mobile": ("MOBILE_TOKEN", "MOBILE_UUID"),
     "computer": ("COMPUTER_TOKEN", "COMPUTER_UUID"),
@@ -169,7 +183,48 @@ def _base_clash_profile(proxies: list[dict]) -> dict:
     }
 
 
-def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
+def load_mihomo_custom_rules(root: Path = DEFAULT_MIHOMO_RULES_ROOT) -> list[str]:
+    """Load and map cached MIHOMO_YAMLS custom lists to Rose policies.
+
+    A missing cache disables the optional integration.  Once the cache directory
+    exists, every managed file must be present and valid so a partial refresh
+    can never silently publish an incomplete policy.
+    """
+    if not root.exists():
+        return []
+    rules: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for filename, policy in MIHOMO_RULE_POLICIES:
+        path = root / filename
+        if not path.is_file():
+            raise RuntimeError("incomplete MIHOMO custom rule cache")
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            raise RuntimeError("unable to read MIHOMO custom rule cache") from None
+        for raw in lines:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = [part.strip() for part in line.split(",")]
+            rule_type = parts[0] if parts else ""
+            valid_length = len(parts) == 2 or (
+                rule_type in {"IP-CIDR", "IP-CIDR6"} and len(parts) == 3 and parts[2] == "no-resolve"
+            )
+            if rule_type not in SUPPORTED_MIHOMO_RULE_TYPES or not valid_length or not parts[1]:
+                raise RuntimeError("invalid MIHOMO custom rule")
+            matcher = (rule_type, parts[1].lower())
+            if matcher in seen:
+                continue
+            seen.add(matcher)
+            mapped = [rule_type, parts[1], policy]
+            if len(parts) == 3:
+                mapped.append("no-resolve")
+            rules.append(",".join(mapped))
+    return rules
+
+
+def build_computer_profile(proxies: list[dict], device_uuid: str, custom_rules: list[str] | None = None) -> dict:
     rewritten = [_rewrite_proxy(proxy, device_uuid, "COMPUTER") for proxy in proxies]
     names = [proxy["name"] for proxy in rewritten]
     if len(names) != len(set(names)) or not names:
@@ -246,13 +301,21 @@ def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
     ai_domains = ("chatgpt.com", "chat.com", "openai.com", "sora.com", "oaistatic.com", "oaiusercontent.com", "anthropic.com", "claude.ai", "perplexity.ai", "grok.com", "x.ai", "plasma.to")
     social_domains = ("x.com", "twitter.com", "t.co", "twimg.com", "instagram.com", "cdninstagram.com", "threads.net", "telegram.org", "telegram.me", "t.me", "telesco.pe")
     video_domains = ("youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com", "gvt1.com", "gvt2.com")
-    profile["rules"] = [
+    built_in_rules = [
         *(f"DOMAIN-SUFFIX,{domain},COMPUTER_AI" for domain in ai_domains),
         *(f"DOMAIN-SUFFIX,{domain},COMPUTER_SOCIAL" for domain in social_domains),
         *(f"DOMAIN-SUFFIX,{domain},COMPUTER_VIDEO" for domain in video_domains),
-        "GEOIP,CN,DIRECT",
-        "MATCH,PROXY",
     ]
+    # Built-in application routing always wins.  Suppress imported matchers
+    # that overlap it, regardless of the upstream list's suggested policy.
+    matched = {tuple(rule.split(",", 2)[:2]) for rule in built_in_rules}
+    imported_rules = []
+    for rule in custom_rules or []:
+        matcher = tuple(rule.split(",", 2)[:2])
+        if matcher not in matched:
+            matched.add(matcher)
+            imported_rules.append(rule)
+    profile["rules"] = [*built_in_rules, *imported_rules, "GEOIP,CN,DIRECT", "MATCH,PROXY"]
     return profile
 
 
@@ -397,7 +460,11 @@ def reconcile_vless_clients(config: dict, identities: dict[str, str], legacy_uui
     return changed
 
 
-def generate_outputs(env: dict[str, str], master_root: Path) -> dict[tuple[str, str, str], str]:
+def generate_outputs(
+    env: dict[str, str],
+    master_root: Path,
+    mihomo_rules_root: Path = DEFAULT_MIHOMO_RULES_ROOT,
+) -> dict[tuple[str, str, str], str]:
     if yaml is None:
         raise RuntimeError("PyYAML is required for subscription generation")
     master_token = env["MASTER_TOKEN"]
@@ -417,10 +484,14 @@ def generate_outputs(env: dict[str, str], master_root: Path) -> dict[tuple[str, 
     proxies = clash.get("proxies") or []
     if not proxies:
         raise RuntimeError("master Clash provider has no proxies")
+    custom_rules = load_mihomo_custom_rules(mihomo_rules_root)
     return {
         ("mobile", "default", env["MOBILE_TOKEN"]): build_mobile_subscription(links, env["MOBILE_UUID"]),
         ("computer", "clashMetaProfiles", env["COMPUTER_TOKEN"]): yaml.safe_dump(
-            build_computer_profile(proxies, env["COMPUTER_UUID"]), allow_unicode=True, sort_keys=False, width=1000
+            build_computer_profile(proxies, env["COMPUTER_UUID"], custom_rules),
+            allow_unicode=True,
+            sort_keys=False,
+            width=1000,
         ),
         ("tv", "clashMetaProfiles", env["TV_TOKEN"]): yaml.safe_dump(
             build_tv_profile(proxies, env["TV_UUID"]), allow_unicode=True, sort_keys=False, width=1000
@@ -442,12 +513,13 @@ def main() -> int:
     parser.add_argument("--env", type=Path, default=DEFAULT_ENV)
     parser.add_argument("--master-root", type=Path, default=DEFAULT_MASTER_ROOT)
     parser.add_argument("--publish-root", type=Path, default=DEFAULT_PUBLISH_ROOT)
+    parser.add_argument("--mihomo-rules-root", type=Path, default=DEFAULT_MIHOMO_RULES_ROOT)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     if args.command == "generate":
         env = load_device_env(args.env)
-        outputs = generate_outputs(env, args.master_root)
+        outputs = generate_outputs(env, args.master_root, args.mihomo_rules_root)
         publish_outputs(args.publish_root, outputs)
         print("generated device subscriptions: mobile, computer, tv")
         return 0

@@ -49,6 +49,17 @@ def clash_proxy(name: str) -> dict:
     }
 
 
+COMPUTER_NAMES = [
+    "DMIT_CF_WS_443",
+    "BAND_CF_WS_443",
+    "DMIT_REALITY_IPv4_443",
+    "BAND_REALITY_IPv4_443",
+    "BAND_REALITY_IPv6_443",
+    "DMIT_TLS_IPv6_443",
+    "DMIT_REALITY_IPv4_8443",
+]
+
+
 def test_mobile_base64_rewrites_identity_and_prefix_only() -> None:
     original = [link("BAND_REALITY_IPv4_443"), link("DMIT_REALITY_IPv4_443", "dmit.example.com")]
 
@@ -86,15 +97,7 @@ def test_mobile_generation_rejects_duplicate_names_and_malformed_base64(tmp_path
 
 
 def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
-    names = [
-        "DMIT_CF_WS_443",
-        "BAND_CF_WS_443",
-        "DMIT_REALITY_IPv4_443",
-        "BAND_REALITY_IPv4_443",
-        "BAND_REALITY_IPv6_443",
-        "DMIT_TLS_IPv6_443",
-        "DMIT_REALITY_IPv4_8443",
-    ]
+    names = COMPUTER_NAMES
     proxies = [clash_proxy(name) for name in names]
 
     profile = module.build_computer_profile(proxies, COMPUTER_UUID)
@@ -158,16 +161,93 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
     assert LEGACY_UUID not in yaml.safe_dump(profile)
 
 
+def test_mihomo_custom_rules_integrate_with_built_in_dedup_and_priority(tmp_path: Path) -> None:
+    custom = tmp_path / "mihomo-test"
+    custom.mkdir()
+    (custom / "telegram.list").write_text("DOMAIN-SUFFIX,x.com\nDOMAIN-SUFFIX,cdn-telegram.org\n")
+    (custom / "crypto.list").write_text("# comment\nDOMAIN-SUFFIX,binance.com\nDOMAIN,bybit.com\n")
+    (custom / "apple.list").write_text("DOMAIN-SUFFIX,apple.com\n")
+    (custom / "proxy.list").write_text("DOMAIN-SUFFIX,supertop.co\n")
+    (custom / "apple-intelligence.list").write_text("DOMAIN-SUFFIX,apple-intelligence.apple.com\n")
+    (custom / "cdn.list").write_text("DOMAIN-SUFFIX,ghproxy.link\n")
+    (custom / "speedtest.list").write_text("DOMAIN-SUFFIX,speedtest.net\n")
+    (custom / "apns.list").write_text("DOMAIN-SUFFIX,apns.apple.com\n")
+    (custom / "microsoft.list").write_text("DOMAIN-SUFFIX,microsoft.com\n")
+    (custom / "direct.list").write_text("DOMAIN-SUFFIX,asusgo.com\n")
+
+    rules = module.load_mihomo_custom_rules(custom)
+    profile = module.build_computer_profile(
+        [clash_proxy(name) for name in COMPUTER_NAMES], COMPUTER_UUID, rules
+    )
+
+    # built-in AI egress rules are emitted first and are unchanged
+    built = profile["rules"]
+    assert built[0] == "DOMAIN-SUFFIX,chatgpt.com,COMPUTER_AI"
+    assert built[11] == "DOMAIN-SUFFIX,plasma.to,COMPUTER_AI"
+
+    # Built-in social rule for x.com suppresses the imported list's x.com → SOCIAL rule
+    assert "DOMAIN-SUFFIX,x.com,COMPUTER_SOCIAL" in built
+    imported_x = [r for r in built if "x.com" in r]
+    assert len(imported_x) == 1 and imported_x[0] == "DOMAIN-SUFFIX,x.com,COMPUTER_SOCIAL"
+
+    # telegram list's non-overlapping entry is injected after built-in rules
+    assert "DOMAIN-SUFFIX,cdn-telegram.org,COMPUTER_SOCIAL" in built
+
+    # crypto → DEFAULT, apple-intelligence → AI, apple → DIRECT
+    assert "DOMAIN-SUFFIX,binance.com,COMPUTER_DEFAULT" in built
+    assert "DOMAIN,bybit.com,COMPUTER_DEFAULT" in built
+    assert "DOMAIN-SUFFIX,apple-intelligence.apple.com,COMPUTER_AI" in built
+    assert "DOMAIN-SUFFIX,apple.com,DIRECT" in built
+
+    # proxy/cdn/speedtest → DEFAULT, apns/microsoft/direct → DIRECT
+    assert "DOMAIN-SUFFIX,supertop.co,COMPUTER_DEFAULT" in built
+    assert "DOMAIN-SUFFIX,ghproxy.link,COMPUTER_DEFAULT" in built
+    assert "DOMAIN-SUFFIX,speedtest.net,COMPUTER_DEFAULT" in built
+    assert "DOMAIN-SUFFIX,apns.apple.com,DIRECT" in built
+    assert "DOMAIN-SUFFIX,microsoft.com,DIRECT" in built
+    assert "DOMAIN-SUFFIX,asusgo.com,DIRECT" in built
+
+    # terminal rules unchanged
+    assert "GEOIP,CN,DIRECT" in built
+    assert built[-1] == "MATCH,PROXY"
+
+
+def test_mihomo_cache_missing_is_silent(tmp_path: Path) -> None:
+    nonexistent = tmp_path / "nonexistent"
+    assert module.load_mihomo_custom_rules(nonexistent) == []
+
+    profile = module.build_computer_profile(
+        [clash_proxy(name) for name in COMPUTER_NAMES], COMPUTER_UUID
+    )
+    # profile still valid without MIHOMO rules
+    assert profile["rules"][-1] == "MATCH,PROXY"
+    assert "DOMAIN-SUFFIX,chatgpt.com,COMPUTER_AI" in profile["rules"]
+
+
+def test_mihomo_incomplete_cache_or_invalid_rules_fails(tmp_path: Path) -> None:
+    cache = tmp_path / "mihomo-broken"
+    cache.mkdir()
+    (cache / "telegram.list").write_text("DOMAIN-SUFFIX,cdn-telegram.org\n")
+    # crypto.list missing — should fail
+    with pytest.raises(RuntimeError, match="incomplete MIHOMO custom rule cache"):
+        module.load_mihomo_custom_rules(cache)
+
+    # add it back but with an invalid rule
+    (cache / "crypto.list").write_text("BOGUS-RULE,value,EXTRA\n")
+    (cache / "apple.list").write_text("DOMAIN-SUFFIX,apple.com\n")
+    (cache / "proxy.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    (cache / "apple-intelligence.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    (cache / "cdn.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    (cache / "speedtest.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    (cache / "apns.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    (cache / "microsoft.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    (cache / "direct.list").write_text("DOMAIN-SUFFIX,test.com\n")
+    with pytest.raises(RuntimeError, match="invalid MIHOMO custom rule"):
+        module.load_mihomo_custom_rules(cache)
+
+
 def test_tv_profile_is_cdn_first_with_direct_fallback_and_tv_identity() -> None:
-    names = [
-        "DMIT_CF_WS_443",
-        "BAND_CF_WS_443",
-        "DMIT_REALITY_IPv4_443",
-        "BAND_REALITY_IPv4_443",
-        "BAND_REALITY_IPv6_443",
-        "DMIT_TLS_IPv6_443",
-        "DMIT_REALITY_IPv4_8443",
-    ]
+    names = COMPUTER_NAMES
 
     profile = module.build_tv_profile([clash_proxy(name) for name in names], TV_UUID)
 

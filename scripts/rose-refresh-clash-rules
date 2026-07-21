@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+DEST=/var/www/rose-rules/clash-rules
+FILES=(icloud private apple cncidr proxy direct reject)
+BASE=https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+for name in "${FILES[@]}"; do
+  /usr/bin/curl -fsSL --retry 4 --retry-all-errors --connect-timeout 10 --max-time 120 \
+    "$BASE/$name.txt" -o "$TMP/$name.txt"
+  /usr/bin/grep -q '^payload:' "$TMP/$name.txt"
+  test "$(/usr/bin/stat -c %s "$TMP/$name.txt")" -gt 100
+  /usr/bin/chmod 0644 "$TMP/$name.txt"
+done
+
+/usr/bin/install -d -o root -g root -m 0755 "$DEST"
+for name in "${FILES[@]}"; do
+  /usr/bin/install -o root -g root -m 0644 "$TMP/$name.txt" "$DEST/$name.txt.new"
+  /usr/bin/mv -f "$DEST/$name.txt.new" "$DEST/$name.txt"
+done
+
+# The existing mirror service also copies this directory to BAND.
+/usr/bin/systemctl start rose-subscription-sync.service
+
+# ------------------------------------------------------------------
+# MIHOMO_YAMLS custom rule lists (for Rose Computer inline rules)
+# ------------------------------------------------------------------
+MIHOMO_CUSTOM=/var/www/rose-rules/clash-rules/mihomo-custom
+MIHOMO_BASE=https://raw.githubusercontent.com/HenryChiao/MIHOMO_YAMLS/main/custom
+
+MIHOMO_MANIFEST=(
+  telegram.list
+  crypto.list
+  proxy.list
+  cdn.list
+  speedtest.list
+  apns.list
+  apple.list
+  apple-intelligence.list
+  microsoft.list
+  direct.list
+)
+
+/usr/bin/install -d -o root -g root -m 0755 "$MIHOMO_CUSTOM"
+
+for name in "${MIHOMO_MANIFEST[@]}"; do
+  /usr/bin/curl -fsSL --retry 4 --retry-all-errors --connect-timeout 10 --max-time 60 \
+    "$MIHOMO_BASE/$name" -o "$TMP/$name"
+  test "$(/usr/bin/stat -c %s "$TMP/$name")" -gt 0
+  /usr/bin/chmod 0644 "$TMP/$name"
+  /usr/bin/install -o root -g root -m 0644 "$TMP/$name" "$MIHOMO_CUSTOM/$name.new"
+  /usr/bin/mv -f "$MIHOMO_CUSTOM/$name.new" "$MIHOMO_CUSTOM/$name"
+done
+
+# Regenerate device subscriptions so the new rules are published immediately.
+/usr/bin/systemctl start rose-tailored-subscriptions.service
