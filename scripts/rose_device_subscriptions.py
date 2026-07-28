@@ -38,7 +38,12 @@ TV_REQUIRED = (
     "BAND_REALITY_IPv4_443",
     "BAND_REALITY_IPv6_443",
     "DMIT_TLS_IPv6_443",
-    "DMIT_REALITY_IPv4_8443",
+)
+RETIRED_NODE_NAMES = frozenset(
+    {
+        "DMIT_REALITY_IPv4_8443",
+        "VLESS_REALITY_Vision_DMIT_8443",
+    }
 )
 
 
@@ -139,6 +144,8 @@ def build_mobile_subscription(links: list[str], device_uuid: str) -> str:
     rewritten: list[str] = []
     for link in links:
         name = node_name(link)
+        if name in RETIRED_NODE_NAMES:
+            continue
         if name in seen:
             raise RuntimeError(f"duplicate mobile node name: {name}")
         seen.add(name)
@@ -181,41 +188,36 @@ def build_computer_profile(proxies: list[dict], device_uuid: str) -> dict:
         "COMPUTER_BAND_REALITY_IPv4_443",
         "COMPUTER_BAND_REALITY_IPv6_443",
         "COMPUTER_DMIT_TLS_IPv6_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
     }
     missing = sorted(required - set(names))
     if missing:
         raise RuntimeError(f"computer nodes missing from master: {missing}")
     direct = [
         "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
         "COMPUTER_BAND_REALITY_IPv4_443",
     ]
-    cdn = ["COMPUTER_BAND_CF_WS_443", "COMPUTER_DMIT_CF_WS_443"]
+    cdn = ["COMPUTER_DMIT_CF_WS_443", "COMPUTER_BAND_CF_WS_443"]
     ai = [
         "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
         "COMPUTER_DMIT_CF_WS_443",
     ]
     social = [
-        "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_BAND_CF_WS_443",
         "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     video = [
-        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_CF_WS_443",
         "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     default = [
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_CF_WS_443",
         "COMPUTER_BAND_REALITY_IPv4_443",
         "COMPUTER_BAND_CF_WS_443",
-        "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
-        "COMPUTER_DMIT_CF_WS_443",
     ]
     test_url = "https://www.gstatic.com/generate_204"
 
@@ -316,7 +318,6 @@ def build_tv_profile(proxies: list[dict], device_uuid: str) -> dict:
         "TV_BAND_REALITY_IPv4_443",
         "TV_BAND_REALITY_IPv6_443",
         "TV_DMIT_TLS_IPv6_443",
-        "TV_DMIT_REALITY_IPv4_8443",
     ]
     profile = _base_clash_profile(rewritten)
     profile["allow-lan"] = True
@@ -324,7 +325,7 @@ def build_tv_profile(proxies: list[dict], device_uuid: str) -> dict:
     profile["proxy-groups"] = [
         {"name": "TV_CDN", "type": "url-test", "proxies": cdn, "url": test_url, "interval": 300},
         {"name": "TV_DIRECT", "type": "url-test", "proxies": direct, "url": test_url, "interval": 300},
-        {"name": "TV_POLICY", "type": "fallback", "proxies": ["TV_CDN", "TV_DIRECT"], "url": test_url, "interval": 180},
+        {"name": "TV_POLICY", "type": "fallback", "proxies": ["TV_DIRECT", "TV_CDN"], "url": test_url, "interval": 180},
         {"name": "PROXY", "type": "select", "proxies": ["TV_POLICY", "TV_CDN", "TV_DIRECT", "DIRECT"]},
     ]
     profile["rules"] = [
@@ -462,7 +463,11 @@ def generate_outputs(env: dict[str, str], master_root: Path) -> dict[tuple[str, 
         clash = yaml.safe_load(clash_text)
     except yaml.YAMLError:
         raise RuntimeError("invalid private Clash subscription") from None
-    proxies = clash.get("proxies") or []
+    proxies = [
+        proxy
+        for proxy in (clash.get("proxies") or [])
+        if str(proxy.get("name") or "") not in RETIRED_NODE_NAMES
+    ]
     if not proxies:
         raise RuntimeError("master Clash provider has no proxies")
     return {

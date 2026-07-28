@@ -63,10 +63,10 @@ Device publication maintains a root-only `0600` manifest of files created by thi
 
 ## App routing
 
-- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → DMIT only: Reality IPv4 443/8443, then DMIT CF WS. AI never falls back to Band.
-- Telegram, X/Instagram, and related social traffic → Band IPv4/CF first, then DMIT IPv4/CF fallback.
-- YouTube/video → Band CDN first, then DMIT CDN and cross-VPS IPv4 Reality fallback.
-- The Computer profile remotely references `HenryChiao/MIHOMO_YAMLS` and AWAvenue through Mihomo rule providers; Clash Verge caches them locally and needs only the Rose Computer subscription with no local override. AWAvenue advertising rules use `REJECT`; Apple Intelligence retains the DMIT-only AI policy; Telegram uses the social fallback; crypto/proxy/CDN/speed-test rules use the default cross-VPS fallback; and Apple/APNS/Microsoft/direct rules use `DIRECT`.
+- ChatGPT, OpenAI, Claude, Anthropic, and Plasma → DMIT only: Reality IPv4 443, then DMIT CF WS. AI never falls back to Band.
+- Computer social traffic (Telegram, X/Instagram, and related services) → DMIT IPv4/CF first, then Band IPv4/CF fallback.
+- Computer YouTube/video traffic → DMIT Reality/CF first, then Band Reality/CF fallback.
+- The Computer profile remotely references `HenryChiao/MIHOMO_YAMLS` and AWAvenue through Mihomo rule providers; Clash Verge caches them locally and needs only the Rose Computer subscription with no local override. AWAvenue advertising rules use `REJECT`; Apple Intelligence retains the DMIT-only AI policy; Telegram uses the DMIT-first social fallback; crypto/proxy/CDN/speed-test rules use the DMIT-first default fallback; and Apple/APNS/Microsoft/direct rules use `DIRECT`.
 - Automatic computer groups are flat (no nested health groups), explicitly non-lazy, and exclude IPv6-only nodes; IPv6 nodes remain available for manual selection.
 - China whitelist, `GEOIP,CN`, Apple mainland services, LAN, and system traffic → direct.
 - Advertising and tracking domains → rejected.
@@ -90,10 +90,9 @@ BAND_REALITY_IPv4_443
 DMIT_CF_WS_443
 DMIT_TLS_IPv6_443
 DMIT_REALITY_IPv4_443
-DMIT_REALITY_IPv4_8443
 ```
 
-DMIT splits port 443 by address family: IPv4 serves Reality while the stable direct IPv6 address serves TLS Vision. Port 8443 remains as a Reality fallback. DMIT Reality over IPv6 was tested and rejected; DMIT uses TLS Vision for the IPv6 fallback instead.
+DMIT splits port 443 by address family: IPv4 serves Reality while the stable direct IPv6 address serves TLS Vision. DMIT Reality over IPv6 was tested and rejected; DMIT uses TLS Vision for the IPv6 fallback instead.
 
 The Cloudflare WS endpoints hide the corresponding origin. Dedicated Reality/TLS direct hostnames are DNS-only by protocol necessity and reveal their VPS IPv4/IPv6 when queried. No literal origin IP is embedded in the subscription.
 

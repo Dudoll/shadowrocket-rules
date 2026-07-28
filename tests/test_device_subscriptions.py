@@ -66,6 +66,17 @@ def test_mobile_base64_rewrites_identity_and_prefix_only() -> None:
         assert LEGACY_UUID not in after
 
 
+def test_mobile_generation_excludes_retired_dmit_8443() -> None:
+    encoded = module.build_mobile_subscription(
+        [link("DMIT_REALITY_IPv4_8443"), link("DMIT_REALITY_IPv4_443")],
+        MOBILE_UUID,
+    )
+    rewritten = decode_links(encoded)
+    assert [unquote(urlsplit(item).fragment) for item in rewritten] == [
+        "MOBILE_DMIT_REALITY_IPv4_443"
+    ]
+
+
 def test_mobile_generation_rejects_duplicate_names_and_malformed_base64(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="duplicate mobile node name"):
         module.build_mobile_subscription([link("DUPLICATE"), link("DUPLICATE", "other.example.com")], MOBILE_UUID)
@@ -93,7 +104,6 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
         "BAND_REALITY_IPv4_443",
         "BAND_REALITY_IPv6_443",
         "DMIT_TLS_IPv6_443",
-        "DMIT_REALITY_IPv4_8443",
     ]
     proxies = [clash_proxy(name) for name in names]
 
@@ -104,38 +114,34 @@ def test_computer_profile_has_distinct_identity_and_valid_groups() -> None:
     groups = {group["name"]: group for group in profile["proxy-groups"]}
     assert groups["COMPUTER_DIRECT"]["proxies"] == [
         "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
         "COMPUTER_BAND_REALITY_IPv4_443",
     ]
     assert groups["COMPUTER_CDN"]["proxies"] == [
-        "COMPUTER_BAND_CF_WS_443",
         "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     assert groups["COMPUTER_AI"]["proxies"] == [
         "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
         "COMPUTER_DMIT_CF_WS_443",
     ]
     assert not any("COMPUTER_BAND_" in member for member in groups["COMPUTER_AI"]["proxies"])
     assert groups["COMPUTER_SOCIAL"]["proxies"] == [
-        "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_BAND_CF_WS_443",
         "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_CF_WS_443",
+        "COMPUTER_BAND_REALITY_IPv4_443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     assert groups["COMPUTER_VIDEO"]["proxies"] == [
-        "COMPUTER_BAND_CF_WS_443",
+        "COMPUTER_DMIT_REALITY_IPv4_443",
         "COMPUTER_DMIT_CF_WS_443",
         "COMPUTER_BAND_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
+        "COMPUTER_BAND_CF_WS_443",
     ]
     assert groups["COMPUTER_DEFAULT"]["proxies"] == [
+        "COMPUTER_DMIT_REALITY_IPv4_443",
+        "COMPUTER_DMIT_CF_WS_443",
         "COMPUTER_BAND_REALITY_IPv4_443",
         "COMPUTER_BAND_CF_WS_443",
-        "COMPUTER_DMIT_REALITY_IPv4_443",
-        "COMPUTER_DMIT_REALITY_IPv4_8443",
-        "COMPUTER_DMIT_CF_WS_443",
     ]
     health_groups = [group for group in profile["proxy-groups"] if group["type"] != "select"]
     health_group_names = {group["name"] for group in health_groups}
@@ -166,7 +172,6 @@ def test_computer_profile_uses_remote_mihomo_and_awavenue_rule_providers() -> No
         "BAND_REALITY_IPv4_443",
         "BAND_REALITY_IPv6_443",
         "DMIT_TLS_IPv6_443",
-        "DMIT_REALITY_IPv4_8443",
     ]
     profile = module.build_computer_profile([clash_proxy(name) for name in names], COMPUTER_UUID)
     providers = profile["rule-providers"]
@@ -206,7 +211,6 @@ def test_tv_profile_is_cdn_first_with_direct_fallback_and_tv_identity() -> None:
         "BAND_REALITY_IPv4_443",
         "BAND_REALITY_IPv6_443",
         "DMIT_TLS_IPv6_443",
-        "DMIT_REALITY_IPv4_8443",
     ]
 
     profile = module.build_tv_profile([clash_proxy(name) for name in names], TV_UUID)
@@ -220,9 +224,8 @@ def test_tv_profile_is_cdn_first_with_direct_fallback_and_tv_identity() -> None:
         "TV_BAND_REALITY_IPv4_443",
         "TV_BAND_REALITY_IPv6_443",
         "TV_DMIT_TLS_IPv6_443",
-        "TV_DMIT_REALITY_IPv4_8443",
     ]
-    assert groups["TV_POLICY"]["proxies"] == ["TV_CDN", "TV_DIRECT"]
+    assert groups["TV_POLICY"]["proxies"] == ["TV_DIRECT", "TV_CDN"]
 
 
 def test_env_requires_distinct_tokens_and_uuids(tmp_path: Path) -> None:
