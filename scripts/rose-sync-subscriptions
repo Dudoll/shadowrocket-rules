@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+exec 9>/run/rose-subscription-sync/lock
+flock -n 9 || exit 0
+
+SSH="/usr/bin/ssh -i /home/joel/.ssh/id_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile=/home/joel/.ssh/known_hosts -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+RSYNC=(/usr/bin/rsync -a --delete-delay --exclude='/backups/' --exclude='*.codex-backup-*' --exclude='*.bak*' --chown=root:root --chmod=D755,F644 --rsync-path='sudo -n /usr/bin/rsync' -e "$SSH")
+
+"${RSYNC[@]}" /etc/v2ray-agent/subscribe/ joel@vps-band:/etc/v2ray-agent/subscribe/
+"${RSYNC[@]}" /var/www/rose-rules/clash-rules/ joel@vps-band:/var/www/rose-rules/clash-rules/
+"${RSYNC[@]}" /var/www/rose-rules/shadowrocket-rules/ joel@vps-band:/var/www/rose-rules/shadowrocket-rules/
+"${RSYNC[@]}" /var/www/rose-rules/split/ joel@vps-band:/var/www/rose-rules/split/
+"${RSYNC[@]}" /var/www/rose-rules/shadowrocket-personal.conf /var/www/rose-rules/shadowrocket-rose.conf /var/www/rose-rules/shadowrocket-band.conf /var/www/rose-rules/shadowrocket-dmit.conf joel@vps-band:/var/www/rose-rules/

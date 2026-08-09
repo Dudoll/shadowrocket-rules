@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 DEST=/var/www/rose-rules/clash-rules
+SHADOW_DEST=/var/www/rose-rules/shadowrocket-rules
 FILES=(icloud private apple cncidr proxy direct reject)
 BASE=https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release
 TMP=$(/usr/bin/mktemp -d)
@@ -21,11 +22,16 @@ for name in "${FILES[@]}"; do
   /usr/bin/mv -f "$DEST/$name.txt.new" "$DEST/$name.txt"
 done
 
+/usr/bin/install -d -o root -g root -m 0755 "$SHADOW_DEST"
+/usr/bin/python3 /usr/local/sbin/rose-convert-clash-rules.py \
+  --source-dir "$DEST" \
+  --destination-dir "$SHADOW_DEST"
+
 # The MIHOMO custom lists and AWAvenue Ads Rules are now consumed as remote
 # rule-providers directly in the Rose Computer subscription; the local cache
 # is no longer required for generation.
 
-# Mirror to Band and regenerate device subscriptions (MIHOMO + AWAvenue
-# rule-providers fetch from upstream URLs at client runtime).
-/usr/bin/systemctl start rose-subscription-sync.service
+# Generate tailored device subscriptions first, then mirror every generated
+# artifact—including the new Shadowrocket rules—to Band.
 /usr/bin/systemctl start rose-tailored-subscriptions.service
+/usr/bin/systemctl start rose-subscription-sync.service
