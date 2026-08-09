@@ -18,3 +18,12 @@ Policy groups:
 - `社交低延迟`: Reality direct url-test first, Cloudflare WS fallback second.
 - `ChatGPT`: DMIT-only fallback group.
 - Explicit ad and tracking rules are evaluated before broad service routing.
+
+## Versioned rule snapshots
+
+The repository also keeps the latest verified rule snapshot copied from the VPS publication tree:
+
+- `clash-rules/`: original Clash/Mihomo YAML payloads.
+- `shadowrocket-rules/`: generated Surge/Shadowrocket line-oriented rules.
+
+The snapshot was compared byte-for-byte with both `vps-band` and `vps-dmit` before being staged. Do not edit the generated Shadowrocket files manually; refresh the Clash sources and run `rose-convert-clash-rules.py` from the `rose-dual-vps-publish` repository instead. The runtime clients continue to use the Cloudflare publication endpoints, while these files provide a reviewable Git history and rollback point.
